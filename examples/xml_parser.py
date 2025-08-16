@@ -1,6 +1,6 @@
 from typing import Dict
-from .downloader import FileInfo
-from .downloader import DatasetInfo
+from bulkget.downloader import FileInfo
+from ..bulkget.downloader import ListInfo
 import xml.etree.ElementTree as ET
 import datetime
 
@@ -36,7 +36,7 @@ def get_file_info(file_tree) -> FileInfo:
     return file_info
 
 
-def extract_dataset(xml_path) -> DatasetInfo:
+def extract_dataset(xml_path) -> ListInfo:
     # got the dataset tree
     dataset_tree = parse_xml(xml_path)
     # retrieve all files nodes
@@ -51,7 +51,7 @@ def extract_dataset(xml_path) -> DatasetInfo:
         files_hash[file_info.name] = file_info
     # END
 
-    return DatasetInfo(
+    return ListInfo(
         properties=get_properties(dataset_tree),
         files=list(files_hash.values()),
     )

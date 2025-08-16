@@ -1,21 +1,20 @@
-[tool.poetry]
-name = "bulk_download"
+[project]
+name = "bulkget"
 version = "0.1.0"
 description = ""
-authors = ["Ayoub Ghriss <dev@ayghri.net>"]
+authors = [{ name = "Ayoub G.", email = "dev@ayghri.com" }]
 readme = "README.md"
+requires-python = ">=3.9,<3.14"
+dependencies = ["aria2p[tui] (>=0.12.1,<0.13.0)"]
 
-[tool.poetry.dependencies]
-python = ">=3.10"
-aria2p = "^0.12.0"
-pyperclip = "^1.9.0"
-asciimatics = "^1.15.0"
-pydantic = "^2.8.2"
+[tool.poetry]
+packages = [{ include = "bulkget", from = "./" }]
 
 
 [tool.poetry.scripts]
-download_cesm = "bulk_download.main:main"
+bulkget = "bulkget.main:main"
+
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
