@@ -1,6 +1,6 @@
 [project]
 name = "bulkget"
-version = "0.1.0"
+version = "0.1.2"
 description = ""
 authors = [{ name = "Ayoub G.", email = "dev@ayghri.com" }]
 readme = "README.md"
