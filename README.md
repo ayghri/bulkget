@@ -151,4 +151,4 @@ bulkget --checksum data/dataset.json
 
 ## Use Case: Downloading CESM2 Data
 
-For a detailed guide on how to use `bulkget` to download data from the CESM2 Large Ensemble Project, please see the [CESM2 Download Guide](https://github.com/ayghri/bulkget/blob/master/docs/cesm_download.md).
+For a detailed guide on how to use `bulkget` to download data from the CESM2 Large Ensemble Project, please see the [CESM2 Download Guide](https://github.com/ayghri/bulkget/blob/master/examples/cesm_download.md).
