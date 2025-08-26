@@ -3,10 +3,6 @@ import json
 from pathlib import Path
 import subprocess
 import shutil
-import time
-
-from bulkget.downloader import Downloader
-from bulkget.utils import ListInfo
 
 
 class TestBulkget(unittest.TestCase):
@@ -25,6 +21,14 @@ class TestBulkget(unittest.TestCase):
         self.dummy_file_path = self.test_dir / self.dummy_file_name
         with open(self.dummy_file_path, "w") as f:
             f.write(self.dummy_file_content)
+
+        self.hook_file = self.test_dir / "hook.py"
+        with open(self.hook_file, "w") as f:
+            f.write(
+                "from pathlib import Path\n"
+                "def filepath_hook(file_info):\n"
+                "    return Path('custom_dir') / file_info.name\n"
+            )
 
         # Start a simple http server
         self.server_process = subprocess.Popen(
@@ -69,7 +73,7 @@ class TestBulkget(unittest.TestCase):
             [
                 "bulkget",
                 str(self.list_file),
-                "--target",
+                "--path",
                 str(self.download_dir),
                 "--checksum",
             ],
@@ -86,25 +90,72 @@ class TestBulkget(unittest.TestCase):
             content = f.read()
         self.assertEqual(content, self.dummy_file_content)
 
-    def test_downloader_with_filepath_hook(self):
-        """Tests the Downloader class with a custom filepath_hook."""
-
-        def custom_filepath_hook(file_info):
-            return Path("custom_dir") / file_info.name
-
-        list_info = ListInfo.from_json(self.list_file)
-        downloader = Downloader(
-            target_dir=str(self.download_dir),
-            files_list=list_info,
-            filepath_hook=custom_filepath_hook,
-            should_checksum=True,
+    def test_download_cli_urllib(self):
+        """Tests the CLI with the urllib manager."""
+        result = subprocess.run(
+            [
+                "bulkget",
+                str(self.list_file),
+                "--path",
+                str(self.download_dir),
+                "--checksum",
+                "--manager",
+                "urllib",
+            ],
+            capture_output=True,
+            text=True,
         )
-        time.sleep(5)
-        downloader.start()
+        if result.returncode != 0:
+            print("stdout:", result.stdout)
+            print("stderr:", result.stderr)
+        self.assertEqual(result.returncode, 0)
+        downloaded_file = self.download_dir / self.dummy_file_name
+        self.assertTrue(downloaded_file.exists())
+        with open(downloaded_file, "r") as f:
+            content = f.read()
+        self.assertEqual(content, self.dummy_file_content)
 
-        expected_file = self.download_dir / "custom_dir" / self.dummy_file_name
-        self.assertTrue(expected_file.exists())
-        with open(expected_file, "r") as f:
+    def test_download_cli_dry_run(self):
+        """Tests the CLI with --dry-run."""
+        result = subprocess.run(
+            [
+                "bulkget",
+                str(self.list_file),
+                "--path",
+                str(self.download_dir),
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        downloaded_file = self.download_dir / self.dummy_file_name
+        self.assertFalse(downloaded_file.exists())
+        self.assertIn("Dry Run", result.stdout)
+
+    def test_download_cli_filepath_hook(self):
+        """Tests the CLI with --filepath-hook."""
+        result = subprocess.run(
+            [
+                "bulkget",
+                str(self.list_file),
+                "--path",
+                str(self.download_dir),
+                "--filepath-hook",
+                str(self.hook_file),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print("stdout:", result.stdout)
+            print("stderr:", result.stderr)
+        self.assertEqual(result.returncode, 0)
+        downloaded_file = (
+            self.download_dir / "custom_dir" / self.dummy_file_name
+        )
+        self.assertTrue(downloaded_file.exists())
+        with open(downloaded_file, "r") as f:
             content = f.read()
         self.assertEqual(content, self.dummy_file_content)
 

@@ -4,11 +4,11 @@ from datetime import datetime
 import hashlib
 
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import json
 
 
-def verify_checksum(file_path, checksum, checksum_type):
+def verify_checksum(file_path: Path, checksum: str, checksum_type: str) -> bool:
     """
     Compares the checksum of a file with a provided checksum value.
 
@@ -30,20 +30,20 @@ def verify_checksum(file_path, checksum, checksum_type):
         )
     hash_obj = hashlib.new(checksum_type)
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
+        for chunk in iter(lambda: f.read(65536), b""):
             hash_obj.update(chunk)
     return hash_obj.hexdigest().lower() == checksum.lower()
 
 
 @dataclass
-class FileInfo:
+class UrlInfo:
     name: str
     url: str
     checksum: str = ""
     checksum_type: str = ""
     size: int = -1
     mod_time: Optional[datetime] = None
-    metadata: Dict = field(default_factory=lambda: dict())
+    metadata: Dict = field(default_factory=dict)
 
     def already_downloaded(
         self,
@@ -77,18 +77,28 @@ class FileInfo:
 
 
 @dataclass
-class ListInfo:
-    properties: Dict = field(default_factory=lambda: dict())
-    files: List[FileInfo] = field(default_factory=lambda: list())
-
-    # properties: Optional[Dict] = None
-    # files: List[FileInfo] = []
+class UrlList:
+    properties: Dict = field(default_factory=dict)
+    files: List[UrlInfo] = field(default_factory=list)
 
     def __len__(self):
         return len(self.files)
 
+    def to_json(self, path: Path, **kwargs):
+        """Saves the ListInfo object to a JSON file."""
+
+        def default_serializer(o):
+            if isinstance(o, datetime):
+                return o.isoformat()
+            raise TypeError(
+                f"Object of type {o.__class__.__name__} is not JSON serializable"
+            )
+
+        with open(path, "w") as f:
+            json.dump(asdict(self), f, default=default_serializer, **kwargs)
+
     @classmethod
-    def from_json(cls, path: Path) -> "ListInfo":
+    def from_json(cls, path: Path) -> "UrlList":
         """Creates a ListInfo object from a JSON file."""
         with open(path) as f:
             data = json.load(f)
@@ -104,5 +114,5 @@ class ListInfo:
 
         return cls(
             properties=data.get("properties", {}),
-            files=[FileInfo(**f) for f in files_data],
+            files=[UrlInfo(**f) for f in files_data],
         )

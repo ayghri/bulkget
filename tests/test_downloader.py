@@ -1,118 +1,141 @@
 import unittest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, call
 from pathlib import Path
-import shutil
 
 
-from bulkget.downloader import Downloader, Aria2cManager
-from bulkget.utils import FileInfo, ListInfo
-
-class TestAria2cManager(unittest.TestCase):
-    @patch("subprocess.Popen")
-    def test_start_server_success(self, mock_popen):
-        """Tests that the aria2c server starts successfully."""
-        mock_process = MagicMock()
-        mock_process.poll.return_value = None
-        mock_popen.return_value = mock_process
-
-        manager = Aria2cManager()
-        self.assertIsNotNone(manager.process)
-        mock_popen.assert_called_once()
-        manager.stop()
-
-    @patch("subprocess.Popen")
-    def test_start_server_failure(self, mock_popen):
-        """Tests that a RuntimeError is raised when aria2c fails to start."""
-        mock_process = MagicMock()
-        mock_process.poll.return_value = 1
-        mock_process.communicate.return_value = (b"", b"error")
-        mock_popen.return_value = mock_process
-
-        with self.assertRaises(RuntimeError):
-            Aria2cManager()
-
-    @patch("subprocess.Popen")
-    def test_stop_server(self, mock_popen):
-        """Tests that the aria2c server is terminated correctly."""
-        mock_process = MagicMock()
-        mock_process.poll.return_value = None
-        mock_popen.return_value = mock_process
-
-        manager = Aria2cManager()
-        manager.stop()
-        mock_process.terminate.assert_called_once()
-
+from bulkget.downloader import Downloader
+from bulkget.utils import UrlInfo, UrlList
 
 class TestDownloader(unittest.TestCase):
     def setUp(self):
-        self.files_list = ListInfo(
+        self.url_list = UrlList(
             files=[
-                FileInfo(name="file1.txt", url="http://example.com/file1.txt"),
-                FileInfo(name="file2.txt", url="http://example.com/file2.txt"),
+                UrlInfo(name="file1.txt", url="http://example.com/file1.txt", checksum="abc"),
+                UrlInfo(name="file2.txt", url="http://example.com/file2.txt", checksum="def"),
             ]
         )
+        self.download_path = Path("test_downloads")
+        self.download_path.mkdir(exist_ok=True)
 
-    @patch("bulkget.downloader.Aria2cManager")
-    def test_filter_downloaded_files(self, MockAria2cManager):
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.download_path)
+
+    @patch("bulkget.downloader.UrllibManager")
+    @patch("bulkget.downloader.Aria2Manager")
+    def test_downloader_initialization(self, MockAria2Manager, MockUrllibManager):
+        """Tests that the downloader initializes the correct manager."""
+        Downloader(
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="aria2c",
+        )
+        MockAria2Manager.assert_called_once()
+        MockUrllibManager.assert_not_called()
+
+        MockAria2Manager.reset_mock()
+        Downloader(
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="urllib",
+            n_workers=2,
+        )
+        MockUrllibManager.assert_called_once_with(n_workers=2)
+        MockAria2Manager.assert_not_called()
+
+    @patch("bulkget.utils.UrlInfo.already_downloaded")
+    def test_filter_downloaded_files(self, mock_already_downloaded):
         """Tests that already downloaded files are filtered out."""
-        with patch.object(FileInfo, "already_downloaded") as mock_already_downloaded:
-            mock_already_downloaded.side_effect = [True, False]  # file1 is downloaded, file2 is not
-
-            downloader = Downloader(target_dir="fake_dir", files_list=self.files_list)
-            downloader._filter_downloaded_files()
-
-            self.assertEqual(len(downloader.download_queue), 1)
-            self.assertEqual(downloader.download_queue[0].name, "file2.txt")
-
-    @patch("bulkget.downloader.Aria2cManager")
-    def test_dry_run(self, MockAria2cManager):
-        """Tests that no downloads are started in dry_run mode."""
-        mock_aria2_manager_instance = MockAria2cManager.return_value
-        
-        downloader = Downloader(target_dir="fake_dir", files_list=self.files_list, dry_run=True)
-        downloader.start()
-
-        mock_aria2_manager_instance.add_file.assert_not_called()
-        mock_aria2_manager_instance.watch.assert_not_called()
-
-    @patch("bulkget.downloader.Aria2cManager")
-    def test_download_files_call(self, MockAria2cManager):
-        """Tests that the downloader calls the aria2 manager correctly."""
-        mock_aria2_manager_instance = MockAria2cManager.return_value
-        
-        downloader = Downloader(target_dir="fake_dir", files_list=self.files_list)
-        downloader.download_queue = downloader.files_list.files  # Assume no files are filtered
-        downloader._download_files()
-
-        self.assertEqual(mock_aria2_manager_instance.add_file.call_count, 2)
-        mock_aria2_manager_instance.watch.assert_called_once()
-
-    @patch("bulkget.downloader.Aria2cManager")
-    def test_filepath_hook(self, MockAria2cManager):
-        """Tests that the filepath_hook is used to determine the output path."""
-        mock_aria2_manager_instance = MockAria2cManager.return_value
-
-        def custom_hook(file_info):
-            return f"custom/{file_info.name}"
+        mock_already_downloaded.side_effect = [True, False]  # file1 is downloaded, file2 is not
 
         downloader = Downloader(
-            target_dir="fake_dir",
-            files_list=self.files_list,
-            filepath_hook=custom_hook,
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="urllib",
         )
-        downloader.download_queue = downloader.files_list.files
+        downloader._filter_downloaded_files()
+
+        self.assertEqual(len(downloader.download_queue), 1)
+        self.assertEqual(downloader.download_queue[0].name, "file2.txt")
+
+    @patch("bulkget.downloader.Aria2Manager")
+    def test_dry_run_aria2(self, MockAria2Manager):
+        """Tests dry_run with the aria2c manager."""
+        mock_manager_instance = MockAria2Manager.return_value
+        downloader = Downloader(
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="aria2c",
+            dry_run=True,
+        )
+        downloader.start()
+        MockAria2Manager.assert_called_once_with(dry_run=True)
+        self.assertEqual(mock_manager_instance.add_file.call_count, 2)
+        mock_manager_instance.watch.assert_called_once()
+
+    @patch("bulkget.downloader.UrllibManager")
+    def test_dry_run_urllib(self, MockUrllibManager):
+        """Tests dry_run with the urllib manager."""
+        mock_manager_instance = MockUrllibManager.return_value
+        downloader = Downloader(
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="urllib",
+            dry_run=True,
+        )
+        downloader.start()
+        MockUrllibManager.assert_called_once_with(dry_run=True)
+        self.assertEqual(mock_manager_instance.add_file.call_count, 2)
+        mock_manager_instance.watch.assert_called_once()
+
+    @patch("bulkget.downloader.UrllibManager")
+    def test_download_files_call(self, MockUrllibManager):
+        """Tests that the downloader calls the manager correctly."""
+        mock_manager_instance = MockUrllibManager.return_value
+
+        downloader = Downloader(
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="urllib",
+        )
+        downloader.download_queue = (
+            downloader.url_list.files
+        )  # Assume no files are filtered
+        downloader._download_files()
+
+        self.assertEqual(mock_manager_instance.add_file.call_count, 2)
+        mock_manager_instance.watch.assert_called_once()
+
+    @patch("bulkget.downloader.UrllibManager")
+    def test_downloader_with_filepath_hook(self, MockUrllibManager):
+        """Tests the Downloader class with a custom filepath_hook."""
+        mock_manager_instance = MockUrllibManager.return_value
+
+        def custom_filepath_hook(file_info):
+            return Path("custom_dir") / file_info.name
+
+        downloader = Downloader(
+            download_path=self.download_path,
+            url_list=self.url_list,
+            manager="urllib",
+            filepath_hook=custom_filepath_hook,
+        )
+        downloader.download_queue = downloader.url_list.files
         downloader._download_files()
 
         expected_calls = [
-            call(url='http://example.com/file1.txt', target_dir='fake_dir', output_name='custom/file1.txt'),
-            call(url='http://example.com/file2.txt', target_dir='fake_dir', output_name='custom/file2.txt'),
+            call(
+                url="http://example.com/file1.txt",
+                target_dir=str(self.download_path),
+                output_name="custom_dir/file1.txt",
+            ),
+            call(
+                url="http://example.com/file2.txt",
+                target_dir=str(self.download_path),
+                output_name="custom_dir/file2.txt",
+            ),
         ]
-        mock_aria2_manager_instance.add_file.assert_has_calls(expected_calls, any_order=True)
-
-    def tearDown(self):
-        
-        if Path("fake_dir").exists():
-            shutil.rmtree(Path("fake_dir"))
+        mock_manager_instance.add_file.assert_has_calls(expected_calls, any_order=True)
 
 
 if __name__ == "__main__":

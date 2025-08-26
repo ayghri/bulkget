@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from dataclasses import replace
 
-from bulkget.utils import verify_checksum, FileInfo, ListInfo
+from bulkget.utils import verify_checksum, UrlInfo, UrlList
 
 class TestUtils(unittest.TestCase):
     def setUp(self):
@@ -36,7 +36,7 @@ class TestUtils(unittest.TestCase):
     def test_file_info_already_downloaded(self):
         """Tests the already_downloaded method of the FileInfo class."""
         checksum = hashlib.sha256(self.test_content).hexdigest()
-        file_info = FileInfo(
+        file_info = UrlInfo(
             name="test_file.txt",
             url="http://example.com/test.txt",
             checksum=checksum,
@@ -80,8 +80,8 @@ class TestUtils(unittest.TestCase):
         with open(list_file, "w") as f:
             json.dump(json_data, f)
 
-        list_info = ListInfo.from_json(list_file)
-        self.assertIsInstance(list_info, ListInfo)
+        list_info = UrlList.from_json(list_file)
+        self.assertIsInstance(list_info, UrlList)
         self.assertEqual(list_info.properties["dataset"], "test")
         self.assertEqual(len(list_info.files), 1)
         self.assertEqual(list_info.files[0].name, "file1.txt")
